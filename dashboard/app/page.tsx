@@ -1,14 +1,10 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
-import { motion } from "framer-motion";
 import HUDParticles from "./components/HUDParticles";
 import EmergencyFX from "./components/EmergencyFX";
 import StartupOverlay from "./components/StartupOverlay";
-import MetricChart from "./components/MetricChart";
-import StatusCard from "./components/StatusCard";
-import TickerBar from "./components/TickerBar";
-import MissionLog from "./components/MissionLog";
+import FlightDashboardLayout from "./components/FlightDashboardLayout";
 
 type Telemetry = {
   time: number;
@@ -21,6 +17,18 @@ type Telemetry = {
   fault: string;
 };
 
+type LogEntry = {
+  id: string;
+  time: number;
+  type: "FAULT" | "INFO";
+  status: string;
+  fault: string;
+  altitude: number;
+  thrust: number;
+  velocity: number;
+  deltaAlt: number;
+};
+
 export default function Dashboard() {
   const [armed, setArmed] = useState(false);
   const [telemetry, setTelemetry] = useState<Telemetry | null>(null);
@@ -28,7 +36,11 @@ export default function Dashboard() {
   const [log, setLog] = useState<string[]>([]);
   const wsRef = useRef<WebSocket | null>(null);
 
-  // 🔌 WebSocket Connection
+  // Store last snapshot info
+  const latestSnapshot = useRef<Telemetry | null>(null);
+  const lastLogTime = useRef<number>(0);
+  const LOG_INTERVAL = 5000; // 5 seconds
+
   useEffect(() => {
     const ws = new WebSocket("ws://127.0.0.1:8000/ws/telemetry");
     wsRef.current = ws;
@@ -38,10 +50,27 @@ export default function Dashboard() {
       setTelemetry(data);
       setHistory((prev) => [...prev.slice(-100), data]);
 
-      if (data.status === "EMERGENCY")
-        setLog((prev) => [`⚠️ Fault Detected: ${data.fault}`, ...prev]);
-      else if (data.status === "STABLE")
-        setLog((prev) => [`✅ System Stable at ${data.altitude.toFixed(1)}m`, ...prev]);
+      const now = Date.now();
+      const isFault = data.status === "EMERGENCY" || data.fault !== "NONE";
+
+      if (now - lastLogTime.current >= LOG_INTERVAL) {
+        const prevAlt = latestSnapshot.current?.altitude ?? data.altitude;
+        const snapshot: LogEntry = {
+          id: crypto.randomUUID(),
+          time: now,
+          type: isFault ? "FAULT" : "INFO",
+          status: data.status,
+          fault: data.fault,
+          altitude: data.altitude,
+          thrust: data.thrust,
+          velocity: data.velocity,
+          deltaAlt: data.altitude - prevAlt,
+        };
+
+        setLog((prev) => [JSON.stringify(snapshot), ...prev.slice(0, 99)]);
+        lastLogTime.current = now;
+        latestSnapshot.current = data;
+      }
     };
 
     ws.onerror = (e) => console.error("WebSocket error:", e);
@@ -50,10 +79,22 @@ export default function Dashboard() {
     return () => ws.close();
   }, []);
 
-  // 🧭 Fault trigger API
   const triggerFault = async (fault: string) => {
     await fetch(`http://127.0.0.1:8000/trigger_fault/${fault}`, { method: "POST" });
-    setLog((prev) => [`🔧 Fault injected: ${fault}`, ...prev]);
+
+    const snapshot: LogEntry = {
+      id: crypto.randomUUID(),
+      time: Date.now(),
+      type: "FAULT",
+      status: "MANUAL_FAULT",
+      fault,
+      altitude: telemetry?.altitude ?? 0,
+      thrust: telemetry?.thrust ?? 0,
+      velocity: telemetry?.velocity ?? 0,
+      deltaAlt: 0,
+    };
+
+    setLog((prev) => [JSON.stringify(snapshot), ...prev.slice(0, 99)]);
   };
 
   return (
@@ -63,50 +104,12 @@ export default function Dashboard() {
       <EmergencyFX active={telemetry?.status === "EMERGENCY"} />
 
       {armed && (
-        <main className="relative z-10 p-8 space-y-6">
-          <TickerBar text={`System Status: ${telemetry?.status || "LOADING"} • Fault: ${telemetry?.fault || "NONE"}`} />
-
-          <section className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="lg:col-span-2 space-y-6">
-              <div className="card">
-                <h2 className="text-lg font-semibold mb-2 text-accent">Altitude</h2>
-                <MetricChart data={history} xKey="time" yKey="altitude" unit="m" />
-              </div>
-              <div className="card">
-                <h2 className="text-lg font-semibold mb-2 text-accent">Thrust</h2>
-                <MetricChart data={history} xKey="time" yKey="thrust" unit="N" />
-              </div>
-            </div>
-
-            <div className="space-y-4">
-              <StatusCard title="Squawk Code" value="7700" accent="bg-rose-500" />
-              <StatusCard title="Altitude" value={telemetry?.altitude.toFixed(1) ?? "--"} unit="m" />
-              <StatusCard title="Velocity" value={telemetry?.velocity.toFixed(2) ?? "--"} unit="m/s" />
-              <StatusCard title="Thrust" value={telemetry?.thrust.toFixed(1) ?? "--"} unit="N" />
-              <StatusCard title="Status" value={telemetry?.status ?? "--"} />
-              <StatusCard title="Fault" value={telemetry?.fault ?? "NONE"} />
-            </div>
-          </section>
-
-          <section className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-6">
-            <MissionLog entries={log} />
-
-            <div className="card flex flex-col gap-3">
-              <h3 className="text-accent text-sm uppercase tracking-wide">Manual Fault Injection</h3>
-              <div className="flex gap-2">
-                {["ENGINE_LOSS", "SENSOR_DRIFT", "CONTROL_LOCK"].map((f) => (
-                  <button
-                    key={f}
-                    onClick={() => triggerFault(f)}
-                    className="px-3 py-1.5 bg-rose-500/10 border border-rose-400/30 hover:bg-rose-500/20 rounded-lg text-xs text-rose-300 transition"
-                  >
-                    {f}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </section>
-        </main>
+        <FlightDashboardLayout
+          telemetry={telemetry}
+          history={history}
+          log={log}
+          triggerFault={triggerFault}
+        />
       )}
     </>
   );
