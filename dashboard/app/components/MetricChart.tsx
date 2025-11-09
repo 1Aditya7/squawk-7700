@@ -1,51 +1,41 @@
 "use client";
-import {
-  ResponsiveContainer,
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-} from "recharts";
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
+import { motion } from "framer-motion";
 
-export default function MetricChart({
-  data,
-  xKey,
-  yKey,
-  unit,
-  loading,
-}: {
-  data: any[];
-  xKey: string;
-  yKey: string;
-  unit?: string;
-  loading?: boolean;
-}) {
-  if (loading)
-    return <div className="h-60 flex items-center justify-center opacity-70">Loading…</div>;
-  if (!data?.length)
-    return <div className="h-60 flex items-center justify-center opacity-70">No data</div>;
-
+export default function MetricChart({ title, data, yKey, unit }: any) {
   return (
-    <div className="h-72">
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: .35, ease: "easeOut" }}
+      className="w-full h-56 relative hud-glow overflow-hidden"
+    >
+      <h2 className="text-xs uppercase tracking-wider text-gray-400 mb-1 px-2 pt-2">{title}</h2>
+
+      {/* moving sheen */}
+      <motion.div
+        initial={{ x: "-30%" }}
+        animate={{ x: "130%" }}
+        transition={{ duration: 6, repeat: Infinity, ease: "linear" }}
+        className="absolute top-0 h-full w-[18%] bg-gradient-to-r from-transparent via-white/5 to-transparent pointer-events-none"
+      />
+
       <ResponsiveContainer width="100%" height="100%">
         <LineChart data={data}>
-          <CartesianGrid strokeDasharray="4 4" stroke="#1f2a48" />
-          <XAxis
-              dataKey="time"
-              tickFormatter={(t) => (t - (data[0]?.time ?? t)).toFixed(1)}
-              label={{ value: "Time (s)", position: "insideBottomRight", offset: -5 }}
-          />
-          <YAxis stroke="#7c8db5" />
-          <Tooltip
-            contentStyle={{ background: "#0b1220", border: "1px solid #1f2a48", color: "#e6eefc" }}
-            labelStyle={{ color: "#9fb2e0" }}
-            formatter={(v: any) => [`${v}${unit ?? ""}`, yKey]}
-          />
-          <Line type="monotone" dataKey={yKey} dot={false} stroke="#7aa2ff" strokeWidth={2} />
+          <XAxis dataKey="time" hide />
+          <YAxis hide />
+          <Tooltip contentStyle={{ backgroundColor: "#0b0b0b", border: "1px solid #222" }}
+                   labelFormatter={() => ""} formatter={(v:any)=>[v, unit]} />
+          <Line type="monotone" dataKey={yKey} stroke="url(#grad)"
+                strokeWidth={2} dot={false} isAnimationActive={false} />
+          <defs>
+            <linearGradient id="grad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#22d3ee" stopOpacity={0.95}/>
+              <stop offset="100%" stopColor="#0ea5e9" stopOpacity={0.35}/>
+            </linearGradient>
+          </defs>
         </LineChart>
       </ResponsiveContainer>
-    </div>
+    </motion.div>
   );
 }

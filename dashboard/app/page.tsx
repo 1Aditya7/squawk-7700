@@ -1,112 +1,113 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { motion } from "framer-motion";
+import HUDParticles from "./components/HUDParticles";
+import EmergencyFX from "./components/EmergencyFX";
+import StartupOverlay from "./components/StartupOverlay";
 import MetricChart from "./components/MetricChart";
 import StatusCard from "./components/StatusCard";
+import TickerBar from "./components/TickerBar";
+import MissionLog from "./components/MissionLog";
 
-type Row = { time: number; altitude: number; thrust: number };
-type Telemetry = { time:number; altitude:number; thrust:number; status:string; samples:number };
+type Telemetry = {
+  time: number;
+  altitude: number;
+  thrust: number;
+  velocity: number;
+  acceleration: number;
+  error: number;
+  status: string;
+  fault: string;
+};
 
-export default function HomePage() {
-  const [data, setData] = useState<Row[]>([]);
-  const [latest, setLatest] = useState<Telemetry | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [status, setStatus] = useState("INIT");
+export default function Dashboard() {
+  const [armed, setArmed] = useState(false);
+  const [telemetry, setTelemetry] = useState<Telemetry | null>(null);
+  const [history, setHistory] = useState<Telemetry[]>([]);
+  const [log, setLog] = useState<string[]>([]);
   const wsRef = useRef<WebSocket | null>(null);
-  const reconnectTimer = useRef<NodeJS.Timeout | null>(null);
 
+  // 🔌 WebSocket Connection
   useEffect(() => {
-    const connect = () => {
-      try {
-        const ws = new WebSocket("ws://127.0.0.1:8000/ws/telemetry");
-        wsRef.current = ws;
+    const ws = new WebSocket("ws://127.0.0.1:8000/ws/telemetry");
+    wsRef.current = ws;
 
-        ws.onopen = () => {
-          setLoading(false);
-        };
+    ws.onmessage = (evt) => {
+      const data: Telemetry = JSON.parse(evt.data);
+      setTelemetry(data);
+      setHistory((prev) => [...prev.slice(-100), data]);
 
-        ws.onmessage = (evt) => {
-          const msg: Telemetry = JSON.parse(evt.data);
-          setLatest(msg);
-          setStatus(msg.status || "ACTIVE");
-          setData((prev) => [
-            ...prev.slice(-120), // ~last 24s at 5Hz
-            { time: msg.time, altitude: msg.altitude, thrust: msg.thrust },
-          ]);
-        };
-
-        ws.onclose = () => {
-          // try to reconnect after a short delay
-          if (!reconnectTimer.current) {
-            reconnectTimer.current = setTimeout(() => {
-              reconnectTimer.current = null;
-              connect();
-            }, 1000);
-          }
-        };
-
-        ws.onerror = () => {
-          ws.close();
-        };
-      } catch (e) {
-        console.error("WS connect error", e);
-      }
+      if (data.status === "EMERGENCY")
+        setLog((prev) => [`⚠️ Fault Detected: ${data.fault}`, ...prev]);
+      else if (data.status === "STABLE")
+        setLog((prev) => [`✅ System Stable at ${data.altitude.toFixed(1)}m`, ...prev]);
     };
 
-    connect();
-    return () => {
-      if (reconnectTimer.current) clearTimeout(reconnectTimer.current);
-      wsRef.current?.close();
-    };
+    ws.onerror = (e) => console.error("WebSocket error:", e);
+    ws.onclose = () => console.warn("Telemetry socket closed");
+
+    return () => ws.close();
   }, []);
 
+  // 🧭 Fault trigger API
+  const triggerFault = async (fault: string) => {
+    await fetch(`http://127.0.0.1:8000/trigger_fault/${fault}`, { method: "POST" });
+    setLog((prev) => [`🔧 Fault injected: ${fault}`, ...prev]);
+  };
+
   return (
-    <main className="p-6 md:p-10">
-      <header className="flex items-center justify-between mb-8">
-        <motion.h1
-          className="text-2xl md:text-3xl font-semibold tracking-wide"
-          initial={{ opacity: 0, y: -8 }}
-          animate={{ opacity: 1, y: 0 }}
-        >
-          SQUAWK-7700 • Flight Telemetry
-        </motion.h1>
-        <motion.div
-          initial={{ scale: 0.8, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          className="flex items-center gap-3"
-        >
-          <span
-            className={`w-3 h-3 rounded-full ${
-              status === "STABLE"
-                ? "bg-emerald-400"
-                : status === "DESCENT"
-                ? "bg-yellow-400"
-                : "bg-sky-400"
-            } animate-pulse`}
-          />
-          <span className="text-sm opacity-80">Status: {status}</span>
-        </motion.div>
-      </header>
+    <>
+      <StartupOverlay armed={armed} setArmed={setArmed} />
+      <HUDParticles />
+      <EmergencyFX active={telemetry?.status === "EMERGENCY"} />
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 space-y-6">
-          <div className="card">
-            <h2 className="mb-3 text-lg font-medium">Altitude</h2>
-            <MetricChart data={data} xKey="time" yKey="altitude" unit="m" loading={loading} />
-          </div>
-          <div className="card">
-            <h2 className="mb-3 text-lg font-medium">Thrust</h2>
-            <MetricChart data={data} xKey="time" yKey="thrust" unit="N" loading={loading} />
-          </div>
-        </div>
+      {armed && (
+        <main className="relative z-10 p-8 space-y-6">
+          <TickerBar text={`System Status: ${telemetry?.status || "LOADING"} • Fault: ${telemetry?.fault || "NONE"}`} />
 
-        <div className="space-y-6">
-          <StatusCard title="Squawk Code" value="7700" accent="bg-rose-500" />
-          <StatusCard title="Samples" value={String(data.length)} />
-          <StatusCard title="Last Thrust" value={latest ? latest.thrust.toFixed(2) : "--"} unit="N" />
-        </div>
-      </div>
-    </main>
+          <section className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="lg:col-span-2 space-y-6">
+              <div className="card">
+                <h2 className="text-lg font-semibold mb-2 text-accent">Altitude</h2>
+                <MetricChart data={history} xKey="time" yKey="altitude" unit="m" />
+              </div>
+              <div className="card">
+                <h2 className="text-lg font-semibold mb-2 text-accent">Thrust</h2>
+                <MetricChart data={history} xKey="time" yKey="thrust" unit="N" />
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <StatusCard title="Squawk Code" value="7700" accent="bg-rose-500" />
+              <StatusCard title="Altitude" value={telemetry?.altitude.toFixed(1) ?? "--"} unit="m" />
+              <StatusCard title="Velocity" value={telemetry?.velocity.toFixed(2) ?? "--"} unit="m/s" />
+              <StatusCard title="Thrust" value={telemetry?.thrust.toFixed(1) ?? "--"} unit="N" />
+              <StatusCard title="Status" value={telemetry?.status ?? "--"} />
+              <StatusCard title="Fault" value={telemetry?.fault ?? "NONE"} />
+            </div>
+          </section>
+
+          <section className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+            <MissionLog entries={log} />
+
+            <div className="card flex flex-col gap-3">
+              <h3 className="text-accent text-sm uppercase tracking-wide">Manual Fault Injection</h3>
+              <div className="flex gap-2">
+                {["ENGINE_LOSS", "SENSOR_DRIFT", "CONTROL_LOCK"].map((f) => (
+                  <button
+                    key={f}
+                    onClick={() => triggerFault(f)}
+                    className="px-3 py-1.5 bg-rose-500/10 border border-rose-400/30 hover:bg-rose-500/20 rounded-lg text-xs text-rose-300 transition"
+                  >
+                    {f}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </section>
+        </main>
+      )}
+    </>
   );
 }

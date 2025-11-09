@@ -1,10 +1,10 @@
 @import "tailwindcss";
 
 :root {
-  --background: #0b1220;
+  --background: #040611;
   --foreground: #e6eefc;
-  --accent: #7aa2ff;
-  --panel: #0f1730;
+  --accent: #00d9ff;
+  --panel: #0b1224;
 }
 
 @theme inline {
@@ -16,43 +16,47 @@
   --font-mono: var(--font-geist-mono), monospace;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0b1220;
-    --foreground: #e6eefc;
-  }
-}
-
-@media (prefers-color-scheme: light) {
-  :root {
-    --background: #ffffff;
-    --foreground: #171717;
-  }
-}
-
-html, body {
+/* cockpit grid background */
+html,
+body {
   height: 100%;
-  background: var(--background);
-  color: var(--foreground);
   font-family: var(--font-sans);
+  background:
+    radial-gradient(circle at 50% 0%, rgba(0,255,255,0.05), transparent 60%),
+    radial-gradient(circle at 0% 100%, rgba(59,130,246,0.05), transparent 60%),
+    repeating-linear-gradient(0deg, rgba(255,255,255,0.03) 0 1px, transparent 1px 40px),
+    repeating-linear-gradient(90deg, rgba(255,255,255,0.03) 0 1px, transparent 1px 40px),
+    var(--background);
+  color: var(--foreground);
+  overflow-x: hidden;
   letter-spacing: 0.01em;
 }
 
-h1, h2, h3 {
-  font-weight: 600;
+h1, h2, h3 { font-weight: 600; }
+
+.card {
+  background: linear-gradient(180deg, #060913 0%, #0b1224 100%);
+  border: 1px solid rgba(0, 255, 255, 0.08);
+  border-radius: 1rem;
+  box-shadow: 0 0 30px rgba(0, 255, 255, 0.04) inset,
+              0 0 30px rgba(0, 0, 0, 0.4);
+  padding: 1rem;
+  transition: all 0.3s ease;
+}
+.card:hover {
+  border-color: rgba(0,255,255,0.25);
+  box-shadow: 0 0 40px rgba(0,255,255,0.1) inset,
+              0 0 40px rgba(0,255,255,0.1);
 }
 
 a {
   color: var(--accent);
   text-decoration: none;
 }
-a:hover {
-  text-decoration: underline;
-}
+a:hover { text-decoration: underline; }
 
-.card {
-  background-color: var(--panel);
-  border-radius: 1rem;
-  padding: 1rem;
-  box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 255, 255, 0.2);
+  border-radius: 10px;
 }
