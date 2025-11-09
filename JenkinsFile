@@ -1,0 +1,86 @@
+pipeline {
+  agent any
+
+  environment {
+    PYTHONUNBUFFERED = '1'
+    NODE_ENV = 'production'
+  }
+
+  stages {
+    stage('Setup Environment') {
+      steps {
+        echo 'Setting up build environment...'
+        sh '''
+          python3 --version
+          cmake --version
+          node -v
+          npm -v
+        '''
+      }
+    }
+
+    stage('Build Controller') {
+      steps {
+        echo 'Building C++ PID controller...'
+        sh '''
+          cd backend/controller
+          mkdir -p build && cd build
+          cmake .. && make
+        '''
+      }
+    }
+
+    stage('Run Simulation Tests') {
+      steps {
+        echo 'Running flight simulation...'
+        sh '''
+          mkdir -p artifacts
+          python3 backend/flight_dynamics.py
+        '''
+      }
+    }
+
+    stage('Generate Reports') {
+      steps {
+        echo 'Generating verification summary...'
+        sh '''
+          python3 backend/verify_metrics.py || true
+        '''
+        archiveArtifacts artifacts: 'artifacts/**', fingerprint: true
+      }
+    }
+
+    stage('Publish Artifacts to Dashboard') {
+      steps {
+        echo 'Publishing telemetry to dashboard...'
+        sh '''
+          mkdir -p dashboard/public/squawk
+          cp -f artifacts/telemetry.json dashboard/public/squawk/telemetry.json
+          [ -f artifacts/summary.json ] && cp -f artifacts/summary.json dashboard/public/squawk/summary.json || true
+        '''
+      }
+    }
+
+    stage('Deploy Dashboard') {
+      steps {
+        echo 'Building Squawk-7700 dashboard...'
+        sh '''
+          cd dashboard
+          npm ci
+          npm run build
+          npm run export
+        '''
+        archiveArtifacts artifacts: 'dashboard/out/**', fingerprint: true
+      }
+    }
+  }
+
+  post {
+    success {
+      echo 'Pipeline completed successfully — Squawk-7700 deployed.'
+    }
+    failure {
+      echo 'Pipeline failed. Check logs for details.'
+    }
+  }
+}

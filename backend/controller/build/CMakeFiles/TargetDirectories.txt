@@ -1,0 +1,3 @@
+/Users/aditya/Desktop/squawk-7700/backend/controller/build/CMakeFiles/controller.dir
+/Users/aditya/Desktop/squawk-7700/backend/controller/build/CMakeFiles/edit_cache.dir
+/Users/aditya/Desktop/squawk-7700/backend/controller/build/CMakeFiles/rebuild_cache.dir
